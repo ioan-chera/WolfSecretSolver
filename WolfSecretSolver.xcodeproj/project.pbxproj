@@ -8,7 +8,19 @@
 
 /* Begin PBXBuildFile section */
 		4F6195F521BD5F98007287D6 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4F6195F421BD5F98007287D6 /* main.cpp */; };
+		4F6195FD21BD5FE5007287D6 /* libwolf.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 4F6195FB21BD5FD9007287D6 /* libwolf.a */; };
+		4F61960121BD62DB007287D6 /* SmartMap.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4F6195FF21BD62DB007287D6 /* SmartMap.cpp */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		4F6195FA21BD5FD9007287D6 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4F6195F621BD5FD9007287D6 /* wolf.xcodeproj */;
+			proxyType = 2;
+			remoteGlobalIDString = 4FFE84592118D61600B721F9;
+			remoteInfo = wolf;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		4F6195E721BD5F6F007287D6 /* CopyFiles */ = {
@@ -25,6 +37,10 @@
 /* Begin PBXFileReference section */
 		4F6195E921BD5F6F007287D6 /* WolfSecretSolver */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = WolfSecretSolver; sourceTree = BUILT_PRODUCTS_DIR; };
 		4F6195F421BD5F98007287D6 /* main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
+		4F6195F621BD5FD9007287D6 /* wolf.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = wolf.xcodeproj; path = modules/libwolf/wolf/wolf.xcodeproj; sourceTree = "<group>"; };
+		4F6195FF21BD62DB007287D6 /* SmartMap.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = SmartMap.cpp; sourceTree = "<group>"; };
+		4F61960021BD62DB007287D6 /* SmartMap.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = SmartMap.hpp; sourceTree = "<group>"; };
+		4F61960221BD6754007287D6 /* Defs.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = Defs.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -32,6 +48,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4F6195FD21BD5FE5007287D6 /* libwolf.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -41,8 +58,10 @@
 		4F6195E021BD5F6F007287D6 = {
 			isa = PBXGroup;
 			children = (
+				4F6195F621BD5FD9007287D6 /* wolf.xcodeproj */,
 				4F6195F321BD5F98007287D6 /* src */,
 				4F6195EA21BD5F6F007287D6 /* Products */,
+				4F6195FC21BD5FE5007287D6 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -58,8 +77,26 @@
 			isa = PBXGroup;
 			children = (
 				4F6195F421BD5F98007287D6 /* main.cpp */,
+				4F6195FF21BD62DB007287D6 /* SmartMap.cpp */,
+				4F61960021BD62DB007287D6 /* SmartMap.hpp */,
+				4F61960221BD6754007287D6 /* Defs.h */,
 			);
 			path = src;
+			sourceTree = "<group>";
+		};
+		4F6195F721BD5FD9007287D6 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				4F6195FB21BD5FD9007287D6 /* libwolf.a */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		4F6195FC21BD5FE5007287D6 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -106,6 +143,12 @@
 			mainGroup = 4F6195E021BD5F6F007287D6;
 			productRefGroup = 4F6195EA21BD5F6F007287D6 /* Products */;
 			projectDirPath = "";
+			projectReferences = (
+				{
+					ProductGroup = 4F6195F721BD5FD9007287D6 /* Products */;
+					ProjectRef = 4F6195F621BD5FD9007287D6 /* wolf.xcodeproj */;
+				},
+			);
 			projectRoot = "";
 			targets = (
 				4F6195E821BD5F6F007287D6 /* WolfSecretSolver */,
@@ -113,11 +156,22 @@
 		};
 /* End PBXProject section */
 
+/* Begin PBXReferenceProxy section */
+		4F6195FB21BD5FD9007287D6 /* libwolf.a */ = {
+			isa = PBXReferenceProxy;
+			fileType = archive.ar;
+			path = libwolf.a;
+			remoteRef = 4F6195FA21BD5FD9007287D6 /* PBXContainerItemProxy */;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
+/* End PBXReferenceProxy section */
+
 /* Begin PBXSourcesBuildPhase section */
 		4F6195E521BD5F6F007287D6 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4F61960121BD62DB007287D6 /* SmartMap.cpp in Sources */,
 				4F6195F521BD5F98007287D6 /* main.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
