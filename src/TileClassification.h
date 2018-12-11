@@ -23,4 +23,5 @@
 bool isActorSolidDecoration(uint16_t actor, GameMode mode);
 bool isActorTreasure(uint16_t actor, int &score);
 bool isActorEnemy(uint16_t actor, GameMode mode, int &score);
+bool actorDropsKey(uint16_t actor, GameMode mode);
 bool isActorFinale(uint16_t actor, GameMode mode);

@@ -16,16 +16,17 @@
  along with this program.  If not, see <https://www.gnu.org/licenses/>.
  */
 
+#include <bitset>
 #include <queue>
 #include <string.h>
 #include "SmartMap.hpp"
 #include "TileClassification.h"
 
 // visit mode
-enum
+enum class VisitLevel : uint8_t
 {
-    VF_SHOOT = 1,
-    VF_WALK = 2
+    shoot = 1,  // visit by shooting (against enemies)
+    walk = 2    // visit by moving (against everything else)
 };
 
 //
@@ -83,7 +84,7 @@ static Tile tileFromData(uint16_t tile, uint16_t actor, GameMode mode)
     }
     if(actor == 98)
         res.flags |= TF_PUSHWALL;
-    else if(actor == 43)
+    else if(actor == 43 || actorDropsKey(actor, mode))
         res.flags |= TF_KEY1;
     else if(actor == 44)
         res.flags |= TF_KEY2;
@@ -93,14 +94,154 @@ static Tile tileFromData(uint16_t tile, uint16_t actor, GameMode mode)
 }
 
 //
+// Collects all items. Necessary to call after setting the start state
+//
+void PushState::collectItems()
+{
+    static const Position delta[] =
+    {
+        { 1, 0 },
+        { 0, -1 },
+        { -1, 0 },
+        { 0, 1 }
+    };
+    static const unsigned keyTileFlags[4] = { TF_KEY1, TF_KEY2, TF_KEY3, TF_KEY4 };
+    static const unsigned keyInventoryFlags[4] = { IF_KEY1, IF_KEY2, IF_KEY3, IF_KEY4 };
+    static const unsigned lockTileFlags[4] = { TF_LOCK1, TF_LOCK2, TF_LOCK3, TF_LOCK4 };
+
+    std::queue<Position> tiles;
+    std::vector<Position> lockedDoors;
+    tiles.push(playerPos);
+
+    VisitLevel visited[WOLF3D_MAPSIZE][WOLF3D_MAPSIZE] = {};
+    visited[playerPos.y][playerPos.x] = VisitLevel::walk;
+    
+    do
+    {
+        for (auto it = lockedDoors.begin(); it != lockedDoors.end(); ++it)
+        {
+            const Tile &tile = get(*it);
+            bool getout = false;
+            for (int i = 0; i < 4; ++i)
+            {
+                if (tile.flags & lockTileFlags[i] && inventory & keyInventoryFlags[i])
+                {
+                    printf("Will open locked door %d at %d %d\n", i, it->x, it->y);
+                    tiles.push(*it);
+                    visited[it->y][it->x] = VisitLevel::walk;
+                    lockedDoors.erase(it);
+                    getout = true;
+                    break;
+                }
+            }
+            if (getout)
+                break;
+        }
+        if (tiles.empty())
+            break;
+        while (!tiles.empty())
+        {
+            Position pos = tiles.front();
+            tiles.pop();
+
+            Tile &tile = get(pos);
+            if (tile.flags & TF_WALL)
+                continue;
+            VisitLevel &visit = visited[pos.y][pos.x];
+            if (tile.flags & TF_DOOR)
+            {
+                if (visit == VisitLevel::shoot)
+                    continue;   // FIXME: can't support shooting past doors even if enemies hear
+                bool skip = false;
+                for (int i = 0; i < 4; ++i)
+                    if (tile.flags & lockTileFlags[i] && !(inventory & keyInventoryFlags[i]))
+                    {
+                        printf("Found locked door %d at %d %d, will go there later\n", i, pos.x, pos.y);
+                        lockedDoors.push_back(pos);
+                        skip = true;
+                        break;
+                    }
+                if (skip)
+                    continue;
+            }
+            if (tile.flags & TF_DECO)
+                visit = VisitLevel::shoot;
+            if (tile.flags & TF_ENEMY && !(tile.flags & TF_INVULNERABLE))
+            {
+                tile.flags &= ~TF_ENEMY; // kill it
+                score += tile.score;
+                ++kills;
+                printf("Kill nazi at %d %d score %d\n", pos.x, pos.y, tile.score);
+                if (visit == VisitLevel::walk)
+                    playerPos = pos;
+            }
+            if (visit == VisitLevel::walk)
+            {
+                if (tile.flags & TF_TREASURE)
+                {
+                    tile.flags &= ~TF_TREASURE;
+                    score += tile.score;
+                    ++items;
+                    playerPos = pos;
+                    printf("Pick treasure at %d %d score %d\n", pos.x, pos.y, tile.score);
+                }
+
+                for (int i = 0; i < 4; ++i)
+                {
+                    if (tile.flags & keyTileFlags[i])
+                    {
+                        tile.flags &= ~keyTileFlags[i];
+                        inventory |= keyInventoryFlags[i];
+                        playerPos = pos;
+                        printf("Found key %d at %d %d\n", i, pos.x, pos.y);
+                    }
+                }
+            }
+            if (tile.flags & TF_FINALE)
+            {
+                if (tile.flags & TF_ENEMY || visit == VisitLevel::walk) // boss or victory tile
+                {
+                    access |= AF_FINALE;
+                    printf("Found finale at %d %d\n", pos.x, pos.y);
+                }
+            }
+            for (int i = 0; i < 4; ++i)
+            {
+                Position neigh = pos + delta[i];
+                if (neigh.x < 0 || neigh.x >= WOLF3D_MAPSIZE || neigh.y < 0 || neigh.y >= WOLF3D_MAPSIZE)
+                    continue;
+                if (visited[neigh.y][neigh.x] >= visit)
+                    continue;
+                // Check for exit
+                if (visit == VisitLevel::walk && get(neigh).flags & TF_EXIT && delta[i].x)
+                {
+                    if (tile.flags & TF_SECRETPAD)
+                    {
+                        access |= AF_SECRET;
+                        printf("Found secret exit at %d %d\n", neigh.x, neigh.y);
+                    }
+                    else
+                    {
+                        access |= AF_NORMAL;
+                        printf("Found exit at %d %d\n", neigh.x, neigh.y);
+                    }
+                }
+
+                tiles.push(neigh);
+                visited[neigh.y][neigh.x] = visit;
+            }
+        }
+    } while (!lockedDoors.empty());
+}
+
+//
 // Define a smart map
 //
 SmartMap::SmartMap(const uint16_t *tilemap, const uint16_t *actormap, int tedlevel, GameMode mode)
 {
+    PushState state = {};
     // Setup defaults
-    memset(mTiles, 0, sizeof(mTiles));
     mFinish = FinishMode::tally;
-    mPlayerX = mPlayerY = 0;
     mMaxKills = mMaxItems = mMaxSecret = 0;
 
     for(int y = 0; y < WOLF3D_MAPSIZE; ++y)
@@ -108,13 +249,10 @@ SmartMap::SmartMap(const uint16_t *tilemap, const uint16_t *actormap, int tedlev
         for(int x = 0; x < WOLF3D_MAPSIZE; ++x)
         {
             int pos = y * WOLF3D_MAPSIZE + x;
-            Tile &tile = mTiles[y][x];
+            Tile &tile = state.tiles[y][x];
             tile = tileFromData(tilemap[pos], actormap[pos], mode);
             if(actormap[pos] >= 19 && actormap[pos] <= 23)
-            {
-                mPlayerX = x;
-                mPlayerY = y;
-            }
+                state.playerPos = { x, y };
             if(tile.flags & TF_ENEMY)
                 mMaxKills++;
             if(tile.flags & TF_TREASURE)
@@ -124,140 +262,7 @@ SmartMap::SmartMap(const uint16_t *tilemap, const uint16_t *actormap, int tedlev
             // TODO: check for guards walking into walls
         }
     }
-}
 
-//
-// Collects all points
-//
-void SmartMap::collectPoints()
-{
-    static const coord delta[] = {
-        { 1, 0 },
-        { 0, -1 },
-        { -1, 0},
-        { 0, 1 }
-    };
-    unsigned visited[WOLF3D_MAPSIZE][WOLF3D_MAPSIZE] = {};
-
-    std::queue<coord> coords;
-    coords.push(coord{ mPlayerX, mPlayerY });
-    visited[mPlayerY][mPlayerX] = VF_WALK | VF_SHOOT;
-
-    coord pos;
-
-    UndoState undo;
-    undo.access = mAccess;
-    undo.kills = mKills;
-    undo.items = mItems;
-    undo.secret = mSecret;
-    undo.score = mScore;
-    undo.playerpos.x = mPlayerX;
-    undo.playerpos.y = mPlayerY;
-
-    std::vector<coord> locks;
-
-    while(!coords.empty())
-    {
-        pos = coords.front();
-        coords.pop();
-
-        Tile &tile = mTiles[pos.y][pos.x];
-        if(tile.flags & TF_ENEMY && !(tile.flags & TF_INVULNERABLE))
-        {
-            mScore += tile.score;
-            mKills++;
-            undo.tiles.push_back({ pos, tile });
-            tile.score = 0;
-            tile.flags &= ~TF_ENEMY;
-        }
-        if(visited[pos.y][pos.x] & VF_WALK)
-        {
-            mPlayerX = pos.x;
-            mPlayerY = pos.y;
-            if(tile.flags & TF_TREASURE)
-            {
-                mScore += tile.score;
-                mItems++;
-                undo.tiles.push_back({ pos, tile });
-                tile.score = 0;
-                tile.flags &= ~TF_TREASURE;
-            }
-            if(tile.flags & TF_KEY1)
-            {
-                mAccess |= EF_KEY1;
-                undo.tiles.push_back({ pos, tile });
-                tile.flags &= ~TF_KEY1;
-            }
-            if(tile.flags & TF_KEY2)
-            {
-                mAccess |= EF_KEY2;
-                undo.tiles.push_back({ pos, tile });
-                tile.flags &= ~TF_KEY2;
-            }
-            if(tile.flags & TF_KEY3)
-            {
-                mAccess |= EF_KEY3;
-                undo.tiles.push_back({ pos, tile });
-                tile.flags &= ~TF_KEY3;
-            }
-            if(tile.flags & TF_KEY4)
-            {
-                mAccess |= EF_KEY4;
-                undo.tiles.push_back({ pos, tile });
-                tile.flags &= ~TF_KEY4;
-            }
-            if(tile.flags & TF_FINALE)
-            {
-                mAccess |= EF_FINALE;
-                undo.tiles.push_back({ pos, tile });
-                tile.flags &= ~TF_FINALE;
-            }
-        }
-
-        for(int i = 0; i < 4; ++i)
-        {
-            int newx = pos.x + delta[i].x;
-            int newy = pos.y + delta[i].y;
-            if(newx >= 0 && newx < WOLF3D_MAPSIZE && newy >= 0 && newy < WOLF3D_MAPSIZE)
-            {
-                const Tile &tile = mTiles[newy][newx];
-                if(!(tile.flags & TF_WALL))
-                {
-                    if(tile.flags & TF_DECO)
-                    {
-                        if(!(visited[newy][newx] & VF_SHOOT))
-                        {
-                            visited[newy][newx] |= VF_SHOOT;
-                            coords.push(coord{ newx, newy });
-                        }
-                    }
-                    else if((visited[newy][newx] & visited[pos.y][pos.x]) < visited[pos.y][pos.x])
-                    {
-                        bool allow = true;
-                        if(tile.flags & TF_DOOR)
-                        {
-                            if((tile.flags & TF_LOCK1 && !(mAccess & EF_KEY1)) ||
-                               (tile.flags & TF_LOCK2 && !(mAccess & EF_KEY2)) ||
-                               (tile.flags & TF_LOCK3 && !(mAccess & EF_KEY3)) ||
-                               (tile.flags & TF_LOCK4 && !(mAccess & EF_KEY4)))
-                            {
-                                allow = false;
-                                if(visited[pos.y][pos.x] & VF_WALK)
-                                    locks.push_back(coord{ newx, newy });
-                            }
-                        }
-                        if(allow)
-                        {
-                            coords.push(coord{ newx, newy });
-                            visited[newy][newx] = visited[pos.y][pos.x];
-                        }
-                    }
-                }
-                else if(tile.flags & TF_EXIT && delta[i].x)
-                {
-                    mAccess |= mTiles[pos.y][pos.x].flags & TF_SECRETPAD ? EF_SECRET : EF_NORMAL;
-                }
-            }
-        }
-    }
+    state.collectItems();
+    mStack.push(state);
 }

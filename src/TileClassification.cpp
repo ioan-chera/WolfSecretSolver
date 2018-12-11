@@ -277,6 +277,26 @@ bool isActorEnemy(uint16_t actor, GameMode mode, int &score)
 }
 
 //
+// True if actor drops gold key
+//
+bool actorDropsKey(uint16_t actor, GameMode mode)
+{
+    switch (actor)
+    {
+    case 197:
+    case 214:
+        return mode == GameMode::wolf3d;
+    case 125:
+    case 142:
+    case 143:
+    case 161:
+        return mode == GameMode::spear;
+    default:
+        return false;
+    }
+}
+
+//
 // True if actor is capable of ending the game suddenly
 //
 bool isActorFinale(uint16_t actor, GameMode mode)

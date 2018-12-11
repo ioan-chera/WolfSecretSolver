@@ -77,45 +77,61 @@ struct Tile
 };
 
 //
-// Exit flags
+// Access flags
 //
 enum
 {
-    EF_NORMAL = 1,
-    EF_SECRET = 2,
-    EF_FINALE = 4,
-    EF_KEY1 = 8,
-    EF_KEY2 = 0x10,
-    EF_KEY3 = 0x20,
-    EF_KEY4 = 0x40
+    AF_NORMAL = 1,
+    AF_SECRET = 2,
+    AF_FINALE = 4
+};
+
+enum
+{
+    IF_KEY1 = 1,
+    IF_KEY2 = 2,
+    IF_KEY3 = 4,
+    IF_KEY4 = 8,
 };
 
 //
 // Coordinate
 //
-struct coord
+struct Position
 {
     int x, y;
+
+    Position operator+(Position other) const
+    {
+        return { x + other.x, y + other.y };
+    }
 };
 
 struct LocatedTile
 {
-    coord pos;
+    Position pos;
     Tile tile;
 };
 
 //
-// State difference when doing something
+// State after pushing a wall
 //
-struct UndoState
+struct PushState
 {
-    int score;
-    int kills;
-    int items;
-    int secret;
-    unsigned access;
-    coord playerpos;
-    std::vector<LocatedTile> tiles;
+    Tile tiles[WOLF3D_MAPSIZE][WOLF3D_MAPSIZE]; // current tile setup (after pushing and picking up everything)
+    Position playerPos;                            // player position (after pushing and picking up everything)
+    int score;          // score (accumulated)
+    int kills;          // kills (accumulated)
+    int items;          // items (accumulated)
+    int secret;         // secret (accumulated, by one per each step)
+    unsigned inventory; // inventory of important items (accumulated)
+    unsigned access;    // current access (NOT accumulated)
+
+    void collectItems();
+    Tile &get(Position pos)
+    {
+        return tiles[pos.y][pos.x];
+    }
 };
 
 //
@@ -126,26 +142,12 @@ class SmartMap
 public:
     SmartMap(const uint16_t *tilemap, const uint16_t *actormap, int tedlevel, GameMode mode);
 private:
-    void collectPoints();
-
-    std::stack<UndoState> mUndos;
-
-    Tile mTiles[WOLF3D_MAPSIZE][WOLF3D_MAPSIZE];
+    std::stack<PushState> mStack;
     FinishMode mFinish;
-    int mPlayerX;
-    int mPlayerY;
 
-    // Static data
     int mMaxKills;
     int mMaxItems;
     int mMaxSecret;
-
-    // Current status
-    int mScore = 0;
-    int mKills = 0;
-    int mItems = 0;
-    int mSecret = 0;
-    unsigned mAccess = 0;
 };
 
 #endif /* SmartMap_hpp */
