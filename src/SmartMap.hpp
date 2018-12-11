@@ -105,12 +105,24 @@ struct Position
     {
         return { x + other.x, y + other.y };
     }
+    Position operator-(Position other) const
+    {
+        return { x - other.x, y - other.y };
+    }
 };
 
-struct LocatedTile
+inline static Position operator*(int factor, Position pos)
 {
-    Position pos;
-    Tile tile;
+    return { factor * pos.x, factor * pos.y };
+}
+
+//
+// Wall push position
+//
+struct PushPosition
+{
+    Position player;
+    Position wall;
 };
 
 //
@@ -127,8 +139,17 @@ struct PushState
     unsigned inventory; // inventory of important items (accumulated)
     unsigned access;    // current access (NOT accumulated)
 
+    std::vector<PushPosition> pushables;    // available push positions (found after collecting)
+
     void collectItems();
+    bool pushable(const PushPosition &pp) const;
+    void pushTrivialWalls();
+
     Tile &get(Position pos)
+    {
+        return tiles[pos.y][pos.x];
+    }
+    const Tile &get(Position pos) const
     {
         return tiles[pos.y][pos.x];
     }

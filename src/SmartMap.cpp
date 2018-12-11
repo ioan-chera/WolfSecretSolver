@@ -210,20 +210,32 @@ void PushState::collectItems()
                 Position neigh = pos + delta[i];
                 if (neigh.x < 0 || neigh.x >= WOLF3D_MAPSIZE || neigh.y < 0 || neigh.y >= WOLF3D_MAPSIZE)
                     continue;
+                if (visit == VisitLevel::walk && get(neigh).flags & TF_PUSHWALL)
+                {
+                    PushPosition pp = { pos, neigh };
+                    if (pushable(pp))
+                    {
+                        pushables.push_back(pp);
+                        printf("Found pushable from %d %d to %d %d\n", pp.player.x, pp.player.y, pp.wall.x, pp.wall.y);
+                    }
+                }
                 if (visited[neigh.y][neigh.x] >= visit)
                     continue;
                 // Check for exit
-                if (visit == VisitLevel::walk && get(neigh).flags & TF_EXIT && delta[i].x)
+                if (visit == VisitLevel::walk)
                 {
-                    if (tile.flags & TF_SECRETPAD)
+                    if (get(neigh).flags & TF_EXIT && delta[i].x)
                     {
-                        access |= AF_SECRET;
-                        printf("Found secret exit at %d %d\n", neigh.x, neigh.y);
-                    }
-                    else
-                    {
-                        access |= AF_NORMAL;
-                        printf("Found exit at %d %d\n", neigh.x, neigh.y);
+                        if (tile.flags & TF_SECRETPAD)
+                        {
+                            access |= AF_SECRET;
+                            printf("Found secret exit at %d %d\n", neigh.x, neigh.y);
+                        }
+                        else
+                        {
+                            access |= AF_NORMAL;
+                            printf("Found exit at %d %d\n", neigh.x, neigh.y);
+                        }
                     }
                 }
 
@@ -232,6 +244,27 @@ void PushState::collectItems()
             }
         }
     } while (!lockedDoors.empty());
+}
+
+//
+// True if a given position is pushable
+//
+bool PushState::pushable(const PushPosition &pp) const
+{
+    if (get(pp.player).flags & (TF_WALL | TF_DECO) || !(get(pp.wall).flags & TF_WALL))
+        return false;
+    Position nextPos = 2 * pp.wall - pp.player;
+    if (nextPos.x < 0 || nextPos.x >= WOLF3D_MAPSIZE || nextPos.y < 0 || nextPos.y >= WOLF3D_MAPSIZE)
+        return false;
+    return !(get(nextPos).flags & (TF_WALL | TF_DECO | TF_CORPSE | TF_DOOR));
+}
+
+//
+// Push all walls which are guaranteed not to have other destinations
+//
+void PushState::pushTrivialWalls()
+{
+
 }
 
 //

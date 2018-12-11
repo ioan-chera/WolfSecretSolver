@@ -78,6 +78,6 @@ enum class ObjType : int
 
     clip2OrMarblePillar,
 
-}
+};
 
 #endif /* Defs_h */
