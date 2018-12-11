@@ -46,6 +46,12 @@ int main(int argc, const char * argv[])
         fprintf(stderr, "Failed loading %s and %s\n", mapheadpath, gamemapspath);
         return EXIT_FAILURE;
     }
+    result = set.loadMap(tedlevel);
+    if (result != wolf3d_LoadFileOk)
+    {
+        fprintf(stderr, "Failed loading level %d\n", tedlevel);
+        return EXIT_FAILURE;
+    }
 
     const uint16_t *tiles = set.getMap(tedlevel, 0);
     const uint16_t *actors = set.getMap(tedlevel, 1);
