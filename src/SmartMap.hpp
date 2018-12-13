@@ -109,6 +109,28 @@ struct Position
     {
         return { x - other.x, y - other.y };
     }
+    bool operator==(Position other) const
+    {
+        return x == other.x && y == other.y;
+    }
+    Position &operator+=(Position other)
+    {
+        x += other.x;
+        y += other.y;
+        return *this;
+    }
+    int index() const
+    {
+        return y * WOLF3D_MAPSIZE + x;
+    }
+    int manhattan() const
+    {
+        return abs(x) + abs(y);
+    }
+    bool valid() const
+    {
+        return x >= 0 && x < WOLF3D_MAPSIZE && y >= 0 && y < WOLF3D_MAPSIZE;
+    }
 };
 
 inline static Position operator*(int factor, Position pos)
@@ -123,6 +145,25 @@ struct PushPosition
 {
     Position player;
     Position wall;
+
+    bool operator==(const PushPosition &other) const
+    {
+        return player == other.player && wall == other.wall;
+    }
+    bool operator!= (const PushPosition &other) const
+    {
+        return !operator==(other);
+    }
+    PushPosition &operator+=(Position pos)
+    {
+        player += pos;
+        wall += pos;
+        return *this;
+    }
+    bool valid() const
+    {
+        return player.valid() && wall.valid();
+    }
 };
 
 //
@@ -139,11 +180,13 @@ struct PushState
     unsigned inventory; // inventory of important items (accumulated)
     unsigned access;    // current access (NOT accumulated)
 
-    std::vector<PushPosition> pushables;    // available push positions (found after collecting)
+    std::vector<PushPosition> pushPositions;    // available push positions (found after collecting)
 
     void collectItems();
     bool pushable(const PushPosition &pp) const;
-    void pushTrivialWalls();
+    bool isTrivialWall(const PushPosition &pp) const;
+    void pushInline(PushPosition pp);
+    int pushTrivialWalls();
 
     Tile &get(Position pos)
     {

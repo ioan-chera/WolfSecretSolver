@@ -22,11 +22,24 @@
 #include "SmartMap.hpp"
 #include "TileClassification.h"
 
+enum
+{
+    PUSH_DISTANCE = 2,  // TODO: also support distance 3
+};
+
 // visit mode
 enum class VisitLevel : uint8_t
 {
     shoot = 1,  // visit by shooting (against enemies)
     walk = 2    // visit by moving (against everything else)
+};
+
+static const Position DIR_DELTA[] =
+{
+    { 1, 0 },
+    { 0, -1 },
+    { -1, 0 },
+    { 0, 1 }
 };
 
 //
@@ -98,13 +111,6 @@ static Tile tileFromData(uint16_t tile, uint16_t actor, GameMode mode)
 //
 void PushState::collectItems()
 {
-    static const Position delta[] =
-    {
-        { 1, 0 },
-        { 0, -1 },
-        { -1, 0 },
-        { 0, 1 }
-    };
     static const unsigned keyTileFlags[4] = { TF_KEY1, TF_KEY2, TF_KEY3, TF_KEY4 };
     static const unsigned keyInventoryFlags[4] = { IF_KEY1, IF_KEY2, IF_KEY3, IF_KEY4 };
     static const unsigned lockTileFlags[4] = { TF_LOCK1, TF_LOCK2, TF_LOCK3, TF_LOCK4 };
@@ -207,24 +213,23 @@ void PushState::collectItems()
             }
             for (int i = 0; i < 4; ++i)
             {
-                Position neigh = pos + delta[i];
-                if (neigh.x < 0 || neigh.x >= WOLF3D_MAPSIZE || neigh.y < 0 || neigh.y >= WOLF3D_MAPSIZE)
+                Position neigh = pos + DIR_DELTA[i];
+                if (!neigh.valid())
                     continue;
-                if (visit == VisitLevel::walk && get(neigh).flags & TF_PUSHWALL)
-                {
-                    PushPosition pp = { pos, neigh };
-                    if (pushable(pp))
-                    {
-                        pushables.push_back(pp);
-                        printf("Found pushable from %d %d to %d %d\n", pp.player.x, pp.player.y, pp.wall.x, pp.wall.y);
-                    }
-                }
-                if (visited[neigh.y][neigh.x] >= visit)
-                    continue;
-                // Check for exit
                 if (visit == VisitLevel::walk)
                 {
-                    if (get(neigh).flags & TF_EXIT && delta[i].x)
+                    if (get(neigh).flags & TF_PUSHWALL)
+                    {
+                        PushPosition pp = { pos, neigh };
+                        if (pushable(pp))
+                        {
+                            pushPositions.push_back(pp);
+                            printf("Found pushable from %d %d to %d %d\n", pp.player.x, pp.player.y, pp.wall.x, pp.wall.y);
+                        }
+                    }
+
+                    // Check for exit
+                    if (get(neigh).flags & TF_EXIT && DIR_DELTA[i].x)
                     {
                         if (tile.flags & TF_SECRETPAD)
                         {
@@ -239,6 +244,9 @@ void PushState::collectItems()
                     }
                 }
 
+                if (visited[neigh.y][neigh.x] >= visit)
+                    continue;
+
                 tiles.push(neigh);
                 visited[neigh.y][neigh.x] = visit;
             }
@@ -251,20 +259,128 @@ void PushState::collectItems()
 //
 bool PushState::pushable(const PushPosition &pp) const
 {
-    if (get(pp.player).flags & (TF_WALL | TF_DECO) || !(get(pp.wall).flags & TF_WALL))
+    if (!pp.valid() || get(pp.player).flags & (TF_WALL | TF_DECO) || !(get(pp.wall).flags & TF_WALL) || 
+        !(get(pp.wall).flags & TF_PUSHWALL) || (pp.wall - pp.player).manhattan() != 1)
+    {
         return false;
+    }
     Position nextPos = 2 * pp.wall - pp.player;
-    if (nextPos.x < 0 || nextPos.x >= WOLF3D_MAPSIZE || nextPos.y < 0 || nextPos.y >= WOLF3D_MAPSIZE)
+    if (!nextPos.valid())
         return false;
     return !(get(nextPos).flags & (TF_WALL | TF_DECO | TF_CORPSE | TF_DOOR));
 }
 
 //
+// True if wall is trivially pushable from just one point
+//
+bool PushState::isTrivialWall(const PushPosition &pp) const
+{
+    auto mutated = const_cast<Tile(*)[WOLF3D_MAPSIZE]>(tiles);
+    std::vector<Position> restore;
+
+    for (int y = 0; y < WOLF3D_MAPSIZE; ++y)
+    {
+        for (int x = 0; x < WOLF3D_MAPSIZE; ++x)
+        {
+            if ((y == pp.wall.y && x == pp.wall.x) || !(mutated[y][x].flags & TF_WALL) || !(mutated[y][x].flags & TF_PUSHWALL))
+                continue;
+            restore.push_back({ x, y });
+            mutated[y][x].flags &= ~TF_WALL;
+        }
+    }
+
+    auto restoreMutated = [mutated, &restore]()
+    {
+        for (Position pos : restore)
+        {
+            mutated[pos.y][pos.x].flags |= TF_WALL;
+        }
+    };
+
+    // Explore from player's position ignoring all other pushwalls and doors besides this
+    std::queue<Position> tiles;
+    tiles.push(playerPos);
+
+    std::bitset<WOLF3D_MAPAREA> visited;
+    visited.set(playerPos.index());
+
+    PushPosition opp;
+    opp.wall = pp.wall;
+
+    while (!tiles.empty())
+    {
+        Position pos = tiles.front();
+        tiles.pop();
+
+        opp.player = pos;
+        if (opp != pp && pushable(opp))
+        {
+            restoreMutated();
+            return false;
+        }
+
+        for (int i = 0; i < 4; ++i)
+        {
+            Position neigh = pos + DIR_DELTA[i];
+            if (!neigh.valid() || visited[neigh.index()] || get(neigh).flags & (TF_WALL | TF_DECO))
+                continue;
+
+            tiles.push(neigh);
+            visited.set(neigh.index());
+        }
+    }
+
+    restoreMutated();
+    return true;
+}
+
+//
+// Pushes a wall inline, without expecting to add a new layer
+//
+void PushState::pushInline(PushPosition pp)
+{
+    if (!pushable(pp))
+        return;
+
+    printf("Pushing trivial wall %d %d to %d %d\n", pp.player.x, pp.player.y, pp.wall.x, pp.wall.y);
+    ++secret;
+
+    Position dest;
+    for (int i = 0; i < PUSH_DISTANCE; ++i)
+    {
+        if (!pushable(pp))
+        {
+            get(pp.wall).flags &= ~TF_PUSHWALL;
+            return;
+        }
+        Position delta = pp.wall - pp.player;
+        dest = pp.wall + delta;
+        get(dest).flags |= TF_WALL | TF_PUSHWALL;
+        get(pp.wall).flags &= ~(TF_WALL | TF_PUSHWALL);
+        pp += delta;
+    }
+    get(pp.wall).flags &= ~TF_PUSHWALL;
+}
+
+//
 // Push all walls which are guaranteed not to have other destinations
 //
-void PushState::pushTrivialWalls()
+int PushState::pushTrivialWalls()
 {
-
+    std::vector<PushPosition> keep;
+    keep.reserve(pushPositions.size());
+    for (auto it = pushPositions.begin(); it != pushPositions.end(); ++it)
+    {
+        if (!isTrivialWall(*it))
+        {
+            keep.push_back(*it);
+            continue;
+        }
+        pushInline(*it);
+    }
+    int pushed = static_cast<int>(pushPositions.size() - keep.size());
+    pushPositions = keep;
+    return pushed;
 }
 
 //
@@ -284,7 +400,7 @@ SmartMap::SmartMap(const uint16_t *tilemap, const uint16_t *actormap, int tedlev
             int pos = y * WOLF3D_MAPSIZE + x;
             Tile &tile = state.tiles[y][x];
             tile = tileFromData(tilemap[pos], actormap[pos], mode);
-            if(actormap[pos] >= 19 && actormap[pos] <= 23)
+            if(actormap[pos] >= 19 && actormap[pos] < 23)
                 state.playerPos = { x, y };
             if(tile.flags & TF_ENEMY)
                 mMaxKills++;
@@ -296,6 +412,18 @@ SmartMap::SmartMap(const uint16_t *tilemap, const uint16_t *actormap, int tedlev
         }
     }
 
-    state.collectItems();
+    int pushed;
+    do
+    {
+        state.pushPositions.clear();    // push positions must be cleared prior to collecting items
+        state.collectItems();
+        pushed = state.pushTrivialWalls();
+    } while (pushed);
+
+    printf("Kills left: %d\n", mMaxKills - state.kills);
+    printf("Items left: %d\n", mMaxItems - state.items);
+    printf("Secret left: %d\n", mMaxSecret - state.secret);
+    printf("Nontrivial pushwalls accessible: %d\n", (int)state.pushPositions.size());
+
     mStack.push(state);
 }
